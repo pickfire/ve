@@ -1,0 +1,12 @@
+[package]
+name = "ve"
+version = "0.0.1"
+authors = ["Ivan Tham <pickfire@riseup.net>"]
+edition = "2018"
+description = "More compact Vec"
+repository = "https://github.com/pickfire/ve"
+documentation = "https://docs.rs/ve"
+license = "MIT OR Apache-2.0"
+readme = "./README.md"
+keywords = ["vec", "slice"]
+categories = ["no-std", "memory-management"]
