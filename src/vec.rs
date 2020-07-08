@@ -5,14 +5,15 @@ use core::array::LengthAtMost32;
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
-use core::intrinsics::assume;
-use core::iter::TrustedLen;
-use core::mem::ManuallyDrop;
+use core::intrinsics::{arith_offset, assume};
+use core::iter::{FromIterator, FusedIterator, TrustedLen};
+use core::marker::PhantomData;
+use core::mem::{self, ManuallyDrop};
 use core::ops::{self, Index, IndexMut};
-use core::ptr;
+use core::ptr::{self, NonNull};
 use core::slice::{self, SliceIndex};
 
-use alloc::borrow::Cow;
+use alloc::borrow::{Cow, ToOwned};
 use alloc::boxed::Box;
 
 use crate::raw_vec::{RawVec, MASK_HI, MASK_LO};
@@ -998,6 +999,69 @@ impl<T> Extend<T> for Vec<T> {
     }
 }
 
+impl<T> FromIterator<T> for Vec<T> {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Vec<T> {
+        <Self as SpecExtend<T, I::IntoIter>>::from_iter(iter.into_iter())
+    }
+}
+
+impl<T> IntoIterator for Vec<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    /// Creates a consuming iterator, that is, one that moves each value out of the vector (from
+    /// start to end). The vector cannot be used after calling this.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let v = vec!["a".to_string(), "b".to_string()];
+    /// for s in v.into_iter() {
+    ///     // s has type String, not &String
+    ///     println!("{}", s);
+    /// }
+    /// ```
+    #[inline]
+    fn into_iter(self) -> IntoIter<T> {
+        unsafe {
+            let mut me = ManuallyDrop::new(self);
+            let begin = me.as_mut_ptr();
+            let end = if mem::size_of::<T>() == 0 {
+                arith_offset(begin as *const i8, me.len() as isize) as *const T
+            } else {
+                begin.add(me.len()) as *const T
+            };
+            let cap = me.buf.cap();
+            IntoIter {
+                buf: NonNull::new_unchecked(begin),
+                phantom: PhantomData,
+                cap,
+                ptr: begin,
+                end,
+            }
+        }
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Vec<T> {
+    type Item = &'a T;
+    type IntoIter = slice::Iter<'a, T>;
+
+    fn into_iter(self) -> slice::Iter<'a, T> {
+        self.iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut Vec<T> {
+    type Item = &'a mut T;
+    type IntoIter = slice::IterMut<'a, T>;
+
+    fn into_iter(self) -> slice::IterMut<'a, T> {
+        self.iter_mut()
+    }
+}
+
 // Specialization trait used for Vec::from_iter and Vec::extend
 trait SpecExtend<T, I> {
     fn from_iter(iter: I) -> Self;
@@ -1141,6 +1205,8 @@ macro_rules! __impl_slice_eq1 {
         {
             #[inline]
             fn eq(&self, other: &$rhs) -> bool { self[..] == other[..] }
+            #[inline]
+            fn ne(&self, other: &$rhs) -> bool { self[..] != other[..] }
         }
     }
 }
@@ -1221,3 +1287,221 @@ impl<T> AsMut<[T]> for Vec<T> {
         self
     }
 }
+
+impl<T: Clone> From<&[T]> for Vec<T> {
+    fn from(s: &[T]) -> Vec<T> {
+        crate::slice::to_vec(s)
+    }
+}
+
+impl<T: Clone> From<&mut [T]> for Vec<T> {
+    fn from(s: &mut [T]) -> Vec<T> {
+        crate::slice::to_vec(s)
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for Vec<T>
+where
+    [T; N]: LengthAtMost32,
+{
+    fn from(s: [T; N]) -> Vec<T> {
+        crate::slice::into_vec(Box::new(s))
+    }
+}
+
+impl<'a, T> From<Cow<'a, [T]>> for Vec<T>
+where
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    fn from(s: Cow<'a, [T]>) -> Vec<T> {
+        s.into_owned()
+    }
+}
+
+impl<T> From<Box<[T]>> for Vec<T> {
+    fn from(s: Box<[T]>) -> Vec<T> {
+        crate::slice::into_vec(s)
+    }
+}
+
+impl<T> From<Vec<T>> for Box<[T]> {
+    fn from(v: Vec<T>) -> Box<[T]> {
+        v.into_boxed_slice()
+    }
+}
+
+impl From<&str> for Vec<u8> {
+    fn from(s: &str) -> Vec<u8> {
+        From::from(s.as_bytes())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Clone-on-write
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+// Iterators
+////////////////////////////////////////////////////////////////////////////////
+
+/// An iterator that moves out of a vector.
+///
+/// This `struct` is created by the `into_iter` method on [`Vec`] (provided by the [`IntoIterator`]
+/// trait).
+///
+/// [`Vec`]: TODO
+/// [`IntoIterator`]: https://doc.rust-lang.org/stable/std/iter/trait.IntoIterator.html
+pub struct IntoIter<T> {
+    buf: NonNull<T>,
+    phantom: PhantomData<T>,
+    cap: usize,
+    ptr: *const T,
+    end: *const T,
+}
+
+impl<T: fmt::Debug> fmt::Debug for IntoIter<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("IntoIter").field(&self.as_slice()).finish()
+    }
+}
+
+impl<T> IntoIter<T> {
+    /// Returns the remaining items of this iterator as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let vec = vec!['a', 'b', 'c'];
+    /// let mut into_iter = vec.into_iter();
+    /// assert_eq!(into_iter.as_slice(), &['a', 'b', 'c']);
+    /// let _ = into_iter.next().unwrap();
+    /// assert_eq!(into_iter.as_slice(), &['b', 'c']);
+    /// ```
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { slice::from_raw_parts(self.ptr, self.len()) }
+    }
+
+    /// Returns the remaining items of this iterator as a mutable slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let vec = vec!['a', 'b', 'c'];
+    /// let mut into_iter = vec.into_iter();
+    /// assert_eq!(into_iter.as_slice(), &['a', 'b', 'c']);
+    /// into_iter.as_mut_slice()[2] = 'z';
+    /// assert_eq!(into_iter.next().unwrap(), 'a');
+    /// assert_eq!(into_iter.next().unwrap(), 'b');
+    /// assert_eq!(into_iter.next().unwrap(), 'z');
+    /// ```
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, self.len()) }
+    }
+}
+
+impl<T> AsRef<[T]> for IntoIter<T> {
+    fn as_ref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+
+unsafe impl<T: Send> Send for IntoIter<T> {}
+unsafe impl<T: Sync> Sync for IntoIter<T> {}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<T> {
+        if self.ptr as *const _ == self.end {
+            None
+        } else if mem::size_of::<T>() == 0 {
+            // purposely don't use 'ptr.offset' because for vectors with 0-size elements
+            // this would return the same pointer.
+            self.ptr = unsafe { arith_offset(self.ptr as *const T, 1) as *mut T };
+
+            // Make up a value of this ZST.
+            Some(unsafe { mem::zeroed() })
+        } else {
+            let old = self.ptr;
+            self.ptr = unsafe { self.ptr.offset(1) };
+
+            Some(unsafe { ptr::read(old) })
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let exact = if mem::size_of::<T>() == 0 {
+            (self.end as usize).wrapping_sub(self.ptr as usize)
+        } else {
+            unsafe { self.end.offset_from(self.ptr) as usize }
+        };
+        (exact, Some(exact))
+    }
+
+    #[inline]
+    fn count(self) -> usize {
+        self.len()
+    }
+}
+
+impl<T> DoubleEndedIterator for IntoIter<T> {
+    #[inline]
+    fn next_back(&mut self) -> Option<T> {
+        if self.end == self.ptr {
+            None
+        } else if mem::size_of::<T>() == 0 {
+            // See above for why 'ptr.offset' isn't used
+            self.end = unsafe { arith_offset(self.end as *const T, -1) as *mut T };
+
+            // Make up a value of this ZST.
+            Some(unsafe { mem::zeroed() })
+        } else {
+            self.end = unsafe { self.end.offset(-1) };
+
+            Some(unsafe { ptr::read(self.end) })
+        }
+    }
+}
+
+impl<T> ExactSizeIterator for IntoIter<T> {
+    fn is_empty(&self) -> bool {
+        self.ptr == self.end
+    }
+}
+
+impl<T> FusedIterator for IntoIter<T> {}
+
+unsafe impl<T> TrustedLen for IntoIter<T> {}
+
+
+impl<T: Clone> Clone for IntoIter<T> {
+    fn clone(&self) -> IntoIter<T> {
+        Vec::from(self.as_slice()).into_iter()
+    }
+}
+
+unsafe impl<#[may_dangle] T> Drop for IntoIter<T> {
+    fn drop(&mut self) {
+        struct DropGuard<'a, T>(&'a mut IntoIter<T>);
+
+        impl<T> Drop for DropGuard<'_, T> {
+            fn drop(&mut self) {
+                // RawVec handles deallocation
+                let _ = unsafe { RawVec::from_raw_parts(self.0.buf.as_ptr(), self.0.cap, 0) };
+            }
+        }
+
+        let guard = DropGuard(self);
+        // destroy the remaining elements
+        unsafe {
+            ptr::drop_in_place(guard.0.as_mut_slice());
+        }
+        // now `guard` will be dropped and do the rest
+    }
+}
+
+// TODO Drain

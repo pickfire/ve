@@ -32,6 +32,14 @@ impl<T> RawVec<T, Global> {
     }
 
     /// Constructs a new, empty `Vec<T>` with the specified capacity.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the requested capacity exceeds `isize::MAX` bytes.
+    ///
+    /// # Aborts
+    ///
+    /// Aborts on OOM.
     #[inline]
     pub(crate) fn with_capacity(capacity: usize) -> Self {
         Self::with_capacity_in(capacity, Global)
@@ -216,7 +224,7 @@ impl<T, A: AllocRef> RawVec<T, A> {
     ///
     /// # Panics
     ///
-    /// * Panics if the requested capacity exceeds `u32::MAX` bytes.
+    /// Panics if the new capacity exceeds `isize::MAX` bytes.
     ///
     /// # Aborts
     ///
@@ -253,7 +261,7 @@ impl<T, A: AllocRef> RawVec<T, A> {
     ///
     /// # Panics
     ///
-    /// * Panics if the requested capacity exceeds `u32::MAX` bytes.
+    /// Panics if the new capacity exceeds `isize::MAX` bytes.
     ///
     /// # Aborts
     ///
