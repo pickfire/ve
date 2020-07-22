@@ -109,7 +109,39 @@ impl<T> Vec<T> {
     /// deallocate, reallocate or change the contents of memory pointed to by the pointer at will.
     /// Ensure that nothing else uses the pointer after calling this function.
     ///
-    /// TODO
+    /// [`String`]: https://doc.rust-lang.org/stable/std/string/struct.String.html
+    /// [`dealloc`]: https://doc.rust-lang.org/stable/std/alloc/trait.GlobalAlloc.html#tymethod.dealloc
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// use std::ptr;
+    /// use std::mem;
+    ///
+    /// let v = vec![1, 2, 3];
+    ///
+    // FIXME Update this when vec_into_raw_parts is stabilized
+    /// // Prevent running `v`'s destructor so we are in complete control
+    /// // of the allocation.
+    /// let mut v = mem::ManuallyDrop::new(v);
+    ///
+    /// // Pull out the various important pieces of information about `v`
+    /// let p = v.as_mut_ptr();
+    /// let len = v.len();
+    /// let cap = v.capacity();
+    ///
+    /// unsafe {
+    ///     // Overwrite memory with 4, 5, 6
+    ///     for i in 0..len as isize {
+    ///         ptr::write(p.offset(i), 4 + i);
+    ///     }
+    ///
+    ///     // Put everything back together into a Vec
+    ///     let rebuilt = Vec::from_raw_parts(p, len, cap);
+    ///     assert_eq!(rebuilt, [4, 5, 6]);
+    /// }
+    /// ```
     pub unsafe fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Vec<T> {
         Vec {
             buf: RawVec::from_raw_parts(ptr, capacity, length),
@@ -681,6 +713,8 @@ impl<T: Clone> Vec<T> {
     /// vec.extend_from_slice(&[2, 3, 4]);
     /// assert_eq!(vec, [1, 2, 3, 4]);
     /// ```
+    ///
+    /// [`extend`]: #method.extend
     pub fn extend_from_slice(&mut self, other: &[T]) {
         self.spec_extend(other.iter())
     }
@@ -1349,7 +1383,6 @@ impl From<&str> for Vec<u8> {
 /// This `struct` is created by the `into_iter` method on [`Vec`] (provided by the [`IntoIterator`]
 /// trait).
 ///
-/// [`Vec`]: TODO
 /// [`IntoIterator`]: https://doc.rust-lang.org/stable/std/iter/trait.IntoIterator.html
 pub struct IntoIter<T> {
     buf: NonNull<T>,
@@ -1397,6 +1430,10 @@ impl<T> IntoIter<T> {
     /// assert_eq!(into_iter.next().unwrap(), 'z');
     /// ```
     pub fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { &mut *self.as_raw_mut_slice() }
+    }
+
+    fn as_raw_mut_slice(&mut self) -> *mut [T] {
         unsafe { &mut *ptr::slice_from_raw_parts_mut(self.ptr as *mut T, self.len()) }
     }
 }
@@ -1477,7 +1514,6 @@ impl<T> FusedIterator for IntoIter<T> {}
 
 unsafe impl<T> TrustedLen for IntoIter<T> {}
 
-
 impl<T: Clone> Clone for IntoIter<T> {
     fn clone(&self) -> IntoIter<T> {
         Vec::from(self.as_slice()).into_iter()
@@ -1498,10 +1534,8 @@ unsafe impl<#[may_dangle] T> Drop for IntoIter<T> {
         let guard = DropGuard(self);
         // destroy the remaining elements
         unsafe {
-            ptr::drop_in_place(guard.0.as_mut_slice());
+            ptr::drop_in_place(guard.0.as_raw_mut_slice());
         }
         // now `guard` will be dropped and do the rest
     }
 }
-
-// TODO Drain
