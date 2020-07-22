@@ -1,6 +1,65 @@
 //! A contiguous growable array type with heap-allocated contents, written `Vec<T>`.
 //!
-//! TODO
+//! Vectors have `O(1)` indexing, amortized `O(1)` push (to the end) and `O(1)` pop (from the end).
+//!
+//! Vectors ensure they never alloctae more than `isize::MAX` bytes.
+//!
+//! # Examples
+//!
+//! You can explicitly create a [`Vec<T>`] with [`new`]:
+//!
+//! ```
+//! use ve::Vec;
+//!
+//! let v: Vec<i32> = Vec::new();
+//! ```
+//!
+//! ...or by using the [`vec!`] macro:
+//!
+//! ```
+//! use ve::vec;
+//!
+//! let v: Vec<i32> = vec![];
+//!
+//! let v = vec![1, 2, 3, 4, 5];
+//!
+//! let v = vec![0; 10]; // ten zeros
+//! ```
+//!
+//! You can [`push`] values onto the end of a vector (which will grow the vector as needed):
+//!
+//! ```
+//! # use ve::vec;
+//! let mut v = vec![1, 2];
+//!
+//! v.push(3);
+//! ```
+//!
+//! Popping values works in much the same way:
+//!
+//! ```
+//! # use ve::vec;
+//! let mut v = vec![1, 2];
+//!
+//! let two = v.pop();
+//! ```
+//!
+//! Vectors also support indexing (through the [`Index`] and [`IndexMut`] traits):
+//!
+//! ```
+//! # use ve::vec;
+//! let mut v = vec![1, 2, 3];
+//! let three = v[2];
+//! v[1] = v[1] + 5;
+//! ```
+//!
+//! [`Vec<T>`]: ./struct.Vec.html
+//! [`new`]: ./struct.Vec.html#method.new
+//! [`push`]: ./struct.Vec.html#method.push
+//! [`Index`]: https://doc.rust-lang.org/stable/std/ops/trait.Index.html
+//! [`IndexMut`]: https://doc.rust-lang.org/stable/std/ops/trait.IndexMut.html
+//! [`vec!`]: ../macro.vec.html
+
 use core::array::LengthAtMost32;
 use core::cmp::Ordering;
 use core::fmt;
