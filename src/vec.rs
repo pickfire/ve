@@ -17,7 +17,7 @@
 //! ...or by using the [`vec!`] macro:
 //!
 //! ```
-//! use ve::vec;
+//! use ve::{Vec, vec};
 //!
 //! let v: Vec<i32> = vec![];
 //!
@@ -60,7 +60,6 @@
 //! [`IndexMut`]: https://doc.rust-lang.org/stable/std/ops/trait.IndexMut.html
 //! [`vec!`]: ../macro.vec.html
 
-use core::array::LengthAtMost32;
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
@@ -68,7 +67,8 @@ use core::intrinsics::{arith_offset, assume};
 use core::iter::{FromIterator, FusedIterator, TrustedLen};
 use core::marker::PhantomData;
 use core::mem::{self, ManuallyDrop};
-use core::ops::{self, Index, IndexMut};
+use core::ops::Bound::{Excluded, Included, Unbounded};
+use core::ops::{self, Index, IndexMut, RangeBounds};
 use core::ptr::{self, NonNull};
 use core::slice::{self, SliceIndex};
 
@@ -705,6 +705,148 @@ impl<T> Vec<T> {
         }
     }
 
+    /// Removes the last element from a vector and returns it, or [`None`] if it is empty.
+    ///
+    /// [`None`]: https://doc.rust-lang.org/stable/std/option/enum.Option.html#variant.None
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let mut vec = vec![1, 2, 3];
+    /// assert_eq!(vec.pop(), Some(3));
+    /// assert_eq!(vec, [1, 2]);
+    /// ```
+    #[inline]
+    pub fn pop(&mut self) -> Option<T> {
+        if self.len() == 0 {
+            None
+        } else {
+            unsafe {
+                self.set_len(self.len() - 1);
+                Some(ptr::read(self.as_ptr().add(self.len())))
+            }
+        }
+    }
+
+    /// Moves all the elements of `other` into `Self`, leaving `other` empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of elements in the vector overflows a `usize`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut vec = vec![1, 2, 3];
+    /// let mut vec2 = vec![4, 5, 6];
+    /// vec.append(&mut vec2);;
+    /// assert_eq!(vec, [1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(vec2, []);
+    /// ```
+    pub fn append(&mut self, other: &mut Self) {
+        unsafe {
+            self.append_elements(other.as_slice() as _);
+            other.set_len(0);
+        }
+    }
+
+    /// Appends elements to `Self` from other buffer.
+    #[inline]
+    unsafe fn append_elements(&mut self, other: *const [T]) {
+        let count = unsafe { (*other).len() };
+        self.reserve(count);
+        let len = self.len();
+        unsafe { ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count) };
+        self.set_len(len + count);
+    }
+
+    /// Creates a draining iterator that removes the specified range in the vector and yields the
+    /// removed items.
+    ///
+    /// When the iterator **is** dropped, all elements in the range are removed from the vector,
+    /// even if the iterator was not fully consumed. If the iterator **is not** dropped (with
+    /// [`mem::forget`] for example), it is unspecified how many elements are removed.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the ending point or if the ending point is
+    /// greater than the length of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut v = vec![1, 2, 3];
+    /// let u: Vec<_> = v.drain(1..).collect();
+    /// assert_eq!(v, &[1]);
+    /// assert_eq!(u, &[2, 3]);
+    ///
+    /// // A full range clears the vector
+    /// v.drain(..);
+    /// assert_eq!(v, &[]);
+    /// ```
+    pub fn drain<R>(&mut self, range: R) -> Drain<'_, T>
+    where
+        R: RangeBounds<usize>,
+    {
+        // Memory safety
+        //
+        // When the Drain is first created, it shortens the length of the source vector to make
+        // sure no uninitialized or moved-from elements are accessible at all if the Drain's
+        // destructor never gets to run.
+        //
+        // Drain will ptr::read out the values to remove.
+        // When finished, remaining tail of the vec is copied back to cover the hole, and the
+        // vector length is restored to the new depth.
+        let len = self.len();
+        let start = match range.start_bound() {
+            Included(&n) => n,
+            Excluded(&n) => n + 1,
+            Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Included(&n) => n + 1,
+            Excluded(&n) => n,
+            Unbounded => len,
+        };
+
+        #[cold]
+        #[inline(never)]
+        fn start_assert_failed(start: usize, end: usize) -> ! {
+            panic!(
+                "start drain index (is {}) should be <= end drain index (is {})",
+                start, end
+            );
+        }
+
+        #[cold]
+        #[inline(never)]
+        fn end_assert_failed(end: usize, len: usize) -> ! {
+            panic!("end drain index (is {}) should be <= len (is {})", end, len);
+        }
+
+        if start > end {
+            start_assert_failed(start, end);
+        }
+        if end > len {
+            end_assert_failed(end, len);
+        }
+
+        unsafe {
+            // set self.vec length's to start, to be safe in case Drain is leaked
+            self.set_len(start);
+            // Use the borrow in the IterMut to indicate borrowing behavior of the whole Drain
+            // iterator (like &mut T).
+            let range_slice = slice::from_raw_parts_mut(self.as_mut_ptr().add(start), end - start);
+            Drain {
+                tail_start: end,
+                tail_len: len - end,
+                iter: range_slice.iter(),
+                vec: NonNull::from(self),
+            }
+        }
+    }
+
     /// Clears the vector, removing all values.
     ///
     /// Note that this method has no effect on the allocated capacity of the vector.
@@ -1312,8 +1454,8 @@ __impl_slice_eq1! { [] &mut [A], Vec<B> }
 __impl_slice_eq1! { [] Cow<'_, [A]>, Vec<B> where A: Clone }
 // __impl_slice_eq1! { [] Cow<'_, [A]>, &[B], A: Clone }
 // __impl_slice_eq1! { [] Cow<'_, [A]>, &mut [B], A: Clone }
-__impl_slice_eq1! { [const N: usize] Vec<A>, [B; N] where [B; N]: LengthAtMost32 }
-__impl_slice_eq1! { [const N: usize] Vec<A>, &[B; N] where [B; N]: LengthAtMost32 }
+__impl_slice_eq1! { [const N: usize] Vec<A>, [B; N] }
+__impl_slice_eq1! { [const N: usize] Vec<A>, &[B; N] }
 
 /// Implements comparison of vectors, lexographically.
 impl<T: PartialOrd> PartialOrd for Vec<T> {
@@ -1393,10 +1535,7 @@ impl<T: Clone> From<&mut [T]> for Vec<T> {
     }
 }
 
-impl<T, const N: usize> From<[T; N]> for Vec<T>
-where
-    [T; N]: LengthAtMost32,
-{
+impl<T, const N: usize> From<[T; N]> for Vec<T> {
     fn from(s: [T; N]) -> Vec<T> {
         crate::slice::into_vec(Box::new(s))
     }
@@ -1598,3 +1737,124 @@ unsafe impl<#[may_dangle] T> Drop for IntoIter<T> {
         // now `guard` will be dropped and do the rest
     }
 }
+
+/// A draining iterator for `Vec<T>`.
+///
+/// This `struct` is created by the [`drain`] method on [`Vec`].
+///
+/// [`drain`]: struct.Vec.html#method.drain
+pub struct Drain<'a, T: 'a> {
+    /// Index of tail to preserve
+    tail_start: usize,
+    /// Length of tail
+    tail_len: usize,
+    /// Current remaining range to remove
+    iter: slice::Iter<'a, T>,
+    vec: NonNull<Vec<T>>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for Drain<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Drain").field(&self.iter.as_slice()).finish()
+    }
+}
+
+impl<'a, T> Drain<'a, T> {
+    /// Returns the remaining items of this iterator as a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let mut vec = vec!['a', 'b', 'c'];
+    /// let mut drain = vec.drain(..);
+    /// assert_eq!(drain.as_slice(), &['a', 'b', 'c']);
+    /// let _ = drain.next().unwrap();
+    /// assert_eq!(drain.as_slice(), &['b', 'c']);
+    /// ```
+    pub fn as_slice(&self) -> &[T] {
+        self.iter.as_slice()
+    }
+}
+
+impl<'a, T> AsRef<[T]> for Drain<'a, T> {
+    fn as_ref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+
+unsafe impl<T: Sync> Sync for Drain<'_, T> {}
+unsafe impl<T: Send> Send for Drain<'_, T> {}
+
+impl<T> Iterator for Drain<'_, T> {
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<T> {
+        self.iter
+            .next()
+            .map(|elt| unsafe { ptr::read(elt as *const _) })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<T> DoubleEndedIterator for Drain<'_, T> {
+    #[inline]
+    fn next_back(&mut self) -> Option<T> {
+        self.iter
+            .next_back()
+            .map(|elt| unsafe { ptr::read(elt as *const _) })
+    }
+}
+
+impl<T> Drop for Drain<'_, T> {
+    fn drop(&mut self) {
+        /// Continues dropping the remaining elements in the `Drain`, then moves back the
+        /// un-`Drain`ed elements to restore the original `Vec`.
+        struct DropGuard<'r, 'a, T>(&'r mut Drain<'a, T>);
+
+        impl<'r, 'a, T> Drop for DropGuard<'r, 'a, T> {
+            fn drop(&mut self) {
+                // Continue the same loop we have below. If the loop already finished, this does
+                // nothing.
+                self.0.for_each(drop);
+
+                if self.0.tail_len > 0 {
+                    unsafe {
+                        let source_vec = self.0.vec.as_mut();
+                        // memmove back untouched tail, update to new length
+                        let start = source_vec.len();
+                        let tail = self.0.tail_start;
+                        if tail != start {
+                            let src = source_vec.as_ptr().add(tail);
+                            let dst = source_vec.as_mut_ptr().add(start);
+                            ptr::copy(src, dst, self.0.tail_len);
+                        }
+                        source_vec.set_len(start + self.0.tail_len);
+                    }
+                }
+            }
+        }
+
+        // exhaust self first
+        while let Some(item) = self.next() {
+            let guard = DropGuard(self);
+            drop(item);
+            mem::forget(guard);
+        }
+
+        // Drop a `DropGuard` to move back the non-drained tail of `self`.
+        DropGuard(self);
+    }
+}
+
+impl<T> ExactSizeIterator for Drain<'_, T> {
+    fn is_empty(&self) -> bool {
+        self.iter.is_empty()
+    }
+}
+
+// TODO Splice
