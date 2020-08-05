@@ -12,7 +12,6 @@
 #![feature(allow_internal_unstable)]
 #![feature(const_fn)]
 #![feature(const_generics)]
-#![feature(const_generic_impls_guard)]
 #![feature(core_intrinsics)]
 #![feature(exact_size_is_empty)]
 #![feature(dropck_eyepatch)]
