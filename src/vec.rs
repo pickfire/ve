@@ -1429,6 +1429,52 @@ impl<T> Vec<T> {
             }
         }
     }
+
+    /// Creates a splicing iterator that replaces the specified range in the vector with the given
+    /// `replace_with` iterator and yields the remove items.
+    /// `replace_with` does not need to be the same length as `range`.
+    ///
+    /// The element range is removed even if the iterator is not consumed until the end.
+    ///
+    /// It is unspecified how many elements are removed from the vector if the `Splice` value is
+    /// leaked.
+    ///
+    /// The input iterator `replace_with` is only consumed when the `Splice` value is dropped.
+    ///
+    /// This is optimal if:
+    ///
+    /// * The tail (elements in the vector after `range`) is empty,
+    /// * or `replace_with` yields fewer elements than `range`'s length
+    /// * or the lower bound of its `size_hint()` is exact.
+    ///
+    /// Otherwise, a temporary vector is allocated and the tail is moved twice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if the end point is greater
+    /// than the length of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let mut v = vec![1, 2, 3];
+    /// let new = [7, 8];
+    /// let u: Vec<_> = v.splice(..2, new.iter().cloned()).collect();
+    /// assert_eq!(v, &[7, 8, 3]);
+    /// assert_eq!(u, &[1, 2]);
+    /// ```
+    #[inline]
+    pub fn splice<R, I>(&mut self, range: R, replace_with: I) -> Splice<'_, I::IntoIter>
+    where
+        R: RangeBounds<usize>,
+        I: IntoIterator<Item = T>,
+    {
+        Splice {
+            drain: self.drain(range),
+            replace_with: replace_with.into_iter(),
+        }
+    }
 }
 
 macro_rules! __impl_slice_eq1 {

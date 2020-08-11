@@ -18,6 +18,7 @@
 #![feature(new_uninit)]
 #![feature(ptr_offset_from)]
 #![feature(slice_partition_dedup)]
+#![feature(slice_ptr_len)]
 #![feature(specialization)]
 #![feature(trusted_len)]
 #![feature(try_reserve)]
