@@ -1142,6 +1142,7 @@ impl<T: Clone + IsZero> SpecFromElem for T {
     }
 }
 
+#[rustc_specialization_trait]
 unsafe trait IsZero {
     /// Whether this value is zero
     fn is_zero(&self) -> bool;
