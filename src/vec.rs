@@ -273,18 +273,49 @@ impl<T> Vec<T> {
     ///
     /// # Examples
     ///
-    /// TODO
+    /// ```
+    /// # use ve::vec;
+    /// let mut vec = Vec::with_capacity(10);
+    /// vec.extend([1, 2, 3].iter().cloned());
+    /// assert_eq!(vec.capacity(), 10);
+    /// vec.shrink_to_fit();
+    /// assert!(vec.capacity() >= 3);
+    /// ```
     pub fn shrink_to_fit(&mut self) {
-        if self.capacity() != self.len() {
+        // The capacity is never less than the length, and there's nothing to do when they are
+        // equal, so we can avoid the panic case in `RawVec::shrink_to_fit` by only calling it
+        // with a greater capacity.
+        if self.capacity() > self.len() {
             self.buf.shrink_to_fit(self.len());
         }
     }
 
-    /// Converts the vector into [`Box<[T]>`].
+    /// Converts the vector into [`Box<[T]>`][owned slice].
     ///
     /// Note that this will drop any excess capacity.
     ///
-    /// TODO
+    /// [owned slice]: https://doc.rust-lang.org/stable/std/boxed/struct.Box.html
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let v = vec![1, 2, 3];
+    ///
+    /// let slice = v.into_boxed_slice();
+    /// ```
+    ///
+    /// Any excess capacity is removed:
+    ///
+    /// ```
+    /// # use ve::Vec;
+    /// let mut vec = Vec::with_capacity(10);
+    /// vec.extend([1, 2, 3].iter().cloned());
+    ///
+    /// assert_eq!(vec.capacity(), 10);
+    /// let slice = vec.into_boxed_slice();
+    /// assert_eq!(slice.into_vec().capacity(), 3);
+    /// ```
     pub fn into_boxed_slice(mut self) -> Box<[T]> {
         self.shrink_to_fit();
         let me = ManuallyDrop::new(self);
@@ -1434,7 +1465,7 @@ impl<T> Vec<T> {
     /// `replace_with` iterator and yields the remove items.
     /// `replace_with` does not need to be the same length as `range`.
     ///
-    /// The element range is removed even if the iterator is not consumed until the end.
+    /// `range` is removed even if the iterator is not consumed until the end.
     ///
     /// It is unspecified how many elements are removed from the vector if the `Splice` value is
     /// leaked.
@@ -1626,8 +1657,6 @@ impl From<&str> for Vec<u8> {
 ///
 /// This `struct` is created by the `into_iter` method on [`Vec`] (provided by the [`IntoIterator`]
 /// trait).
-///
-/// [`IntoIterator`]: https://doc.rust-lang.org/stable/std/iter/trait.IntoIterator.html
 pub struct IntoIter<T> {
     buf: NonNull<T>,
     phantom: PhantomData<T>,
@@ -1786,9 +1815,7 @@ unsafe impl<#[may_dangle] T> Drop for IntoIter<T> {
 
 /// A draining iterator for `Vec<T>`.
 ///
-/// This `struct` is created by the [`drain`] method on [`Vec`].
-///
-/// [`drain`]: struct.Vec.html#method.drain
+/// This `struct` is created by the [`Vec::drain`].
 pub struct Drain<'a, T: 'a> {
     /// Index of tail to preserve
     tail_start: usize,
@@ -1907,10 +1934,8 @@ impl<T> FusedIterator for Drain<'_, T> {}
 
 /// A splicing iterator for `Vec`.
 ///
-/// This struct is created by the [`splice()`] method on [`Vec`]. See its documentation for more.
-///
-/// [`splice()`]: struct.Vec.html#method.splice
-/// [`Vec`]: struct.Vec.html
+/// This struct is created by the [`Vec::splice`].
+/// See its documentation for more.
 #[derive(Debug)]
 pub struct Splice<'a, I: Iterator + 'a> {
     drain: Drain<'a, I::Item>,
