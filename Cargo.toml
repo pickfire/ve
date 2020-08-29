@@ -1,6 +1,6 @@
 [package]
 name = "ve"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Ivan Tham <pickfire@riseup.net>"]
 edition = "2018"
 description = "More compact Vec"
