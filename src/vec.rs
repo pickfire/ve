@@ -201,6 +201,11 @@ use crate::raw_vec::{RawVec, MASK_HI, MASK_LO};
 /// # Guarantees
 ///
 /// TODO Guarantees
+///
+/// [`get`]: https://doc.rust-lang.org/stable/std/vec/struct.Vec.html#method.get
+/// [`get_mut`]: https://doc.rust-lang.org/stable/std/vec/struct.Vec.html#method.get_mut
+/// [`String`]: https://doc.rust-lang.org/stable/std/string/struct.String.html
+/// [`&str`]: type@str
 pub struct Vec<T> {
     buf: RawVec<T>,
 }
@@ -322,7 +327,7 @@ impl<T> Vec<T> {
     /// ```
     pub unsafe fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Vec<T> {
         Vec {
-            buf: RawVec::from_raw_parts(ptr, capacity, length),
+            buf: unsafe { RawVec::from_raw_parts(ptr, capacity, length) },
         }
     }
 
@@ -903,8 +908,10 @@ impl<T> Vec<T> {
         let count = unsafe { (*other).len() };
         self.reserve(count);
         let len = self.len();
-        unsafe { ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count) };
-        self.set_len(len + count);
+        unsafe {
+            ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count);
+            self.set_len(len + count);
+        }
     }
 
     /// Creates a draining iterator that removes the specified range in the vector and yields the
@@ -1105,6 +1112,8 @@ impl<T: Clone> Vec<T> {
     /// vec.resize(2, 0);
     /// assert_eq!(vec, [1, 2]);
     /// ```
+    ///
+    /// [`resize_with`]: Vec::resize_with
     pub fn resize(&mut self, new_len: usize, value: T) {
         let len = self.len();
 
@@ -2211,8 +2220,10 @@ impl<T> Drain<'_, T> {
 
         for place in range_slice {
             if let Some(new_item) = replace_with.next() {
-                unsafe { ptr::write(place, new_item) };
-                vec.set_len(vec.len() + 1);
+                unsafe {
+                    ptr::write(place, new_item);
+                    vec.set_len(vec.len() + 1);
+                }
             } else {
                 return false;
             }

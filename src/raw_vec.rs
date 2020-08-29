@@ -1,3 +1,5 @@
+#![doc(hidden)]
+
 /// Implementation details for `Vec`.
 use core::alloc::{AllocRef, Layout, LayoutErr};
 use core::mem::{self, ManuallyDrop, MaybeUninit};
@@ -196,7 +198,7 @@ impl<T, A: AllocRef> RawVec<T, A> {
     #[inline]
     pub unsafe fn from_raw_parts_in(ptr: *mut T, capacity: usize, length: usize, alloc: A) -> Self {
         Self {
-            ptr: NonNull::new_unchecked(ptr),
+            ptr: unsafe { NonNull::new_unchecked(ptr) },
             fat: (capacity & MASK_LO) << 32 | length & MASK_LO,
             alloc,
         }

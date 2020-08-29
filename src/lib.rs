@@ -8,6 +8,8 @@
 //!
 //! assert_eq!(size_of::<Vec<u8>>(), 2 * WORD);
 //! ```
+#![allow(incomplete_features)]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(allocator_api)]
 #![feature(allow_internal_unstable)]
 #![feature(const_fn)]
@@ -22,6 +24,7 @@
 #![feature(rustc_attrs)]
 #![feature(trusted_len)]
 #![feature(try_reserve)]
+#![feature(unsafe_block_in_unsafe_fn)]
 #![warn(missing_docs)]
 #![no_std]
 extern crate alloc;
@@ -30,9 +33,7 @@ extern crate alloc;
 #[macro_use]
 mod macros;
 
-mod raw_vec;
-
-#[doc(hidden)]
+pub mod raw_vec;
 pub mod slice;
 pub mod vec;
 

@@ -1,3 +1,5 @@
+#![doc(hidden)]
+
 /// Replace standard library `slice` implementation to interface with `Vec`.
 use alloc::borrow::Borrow;
 
