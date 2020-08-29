@@ -2,7 +2,7 @@
 use core::alloc::{AllocRef, Layout, LayoutErr};
 use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ptr::NonNull;
-use core::{cmp, slice};
+use core::{cmp, intrinsics, slice};
 
 use alloc::alloc::{handle_alloc_error, Global};
 use alloc::boxed::Box;
@@ -446,10 +446,11 @@ impl<T, A: AllocRef> RawVec<T, A> {
         let new_size = amount * mem::size_of::<T>();
 
         let ptr = unsafe {
+            let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
             self.alloc
-                .shrink(ptr, layout, new_size)
+                .shrink(ptr, layout, new_layout)
                 .map_err(|_| TryReserveError::AllocError {
-                    layout: Layout::from_size_align_unchecked(new_size, layout.align()),
+                    layout: new_layout,
                     non_exhaustive: (),
                 })?
         };
@@ -474,18 +475,21 @@ where
 
     alloc_guard(new_layout.size())?;
 
-    let ptr = if let Some((ptr, old_layout)) = current_memory {
+    let memory = if let Some((ptr, old_layout)) = current_memory {
         debug_assert_eq!(old_layout.align(), new_layout.align());
-        unsafe { alloc.grow(ptr, old_layout, new_layout.size()) }
+        unsafe {
+            // The allocator checks for alignment equality
+            intrinsics::assume(old_layout.align() == new_layout.align());
+            alloc.grow(ptr, old_layout, new_layout)
+        }
     } else {
         alloc.alloc(new_layout)
-    }
-    .map_err(|_| AllocError {
+    };
+
+    memory.map_err(|_| AllocError {
         layout: new_layout,
         non_exhaustive: (),
-    })?;
-
-    Ok(ptr)
+    })
 }
 
 unsafe impl<#[may_dangle] T, A: AllocRef> Drop for RawVec<T, A> {

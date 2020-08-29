@@ -53,12 +53,9 @@
 //! v[1] = v[1] + 5;
 //! ```
 //!
-//! [`Vec<T>`]: ./struct.Vec.html
-//! [`new`]: ./struct.Vec.html#method.new
-//! [`push`]: ./struct.Vec.html#method.push
-//! [`Index`]: https://doc.rust-lang.org/stable/std/ops/trait.Index.html
-//! [`IndexMut`]: https://doc.rust-lang.org/stable/std/ops/trait.IndexMut.html
-//! [`vec!`]: ../macro.vec.html
+//! [`Vec<T>`]: Vec
+//! [`new`]: Vec::new
+//! [`push`]: Vec::push
 
 use core::cmp::Ordering;
 use core::fmt;
@@ -81,7 +78,129 @@ use crate::raw_vec::{RawVec, MASK_HI, MASK_LO};
 ///
 /// # Examples
 ///
-/// TODO
+/// ```
+/// # use ve::Vec;
+/// let mut vec = Vec::new();
+/// vec.push(1);
+/// vec.push(2);
+///
+/// assert_eq!(vec.len(), 2);
+/// assert_eq!(vec[0], 1);
+///
+/// assert_eq!(vec.pop(), Some(2));
+/// assert_eq!(vec.len(), 1);
+///
+/// vec[0] = 7;
+/// assert_eq!(vec[0], 7);
+///
+/// vec.extend([1, 2, 3].iter().copied());
+///
+/// for x in &vec {
+///     println!("{}", x);
+/// }
+/// assert_eq!(vec, [7, 1, 2, 3]);
+/// ```
+///
+/// The [`vec!`] macro is provided to make initialization more convenient:
+///
+/// ```
+/// # use ve::vec;
+/// let mut vec = vec![1, 2, 3];
+/// vec.push(4);
+/// assert_eq!(vec, [1, 2, 3, 4]);
+/// ```
+///
+/// It can also initialize each element of a `Vec<T>` with a given value.
+/// This may be more efficient than performing allocation and initialization in separate steps,
+/// especially when initializing a vector of zeros:
+///
+/// ```
+/// # use ve::vec;
+/// let vec = vec![0; 5];
+/// assert_eq!(vec, [0, 0, 0, 0, 0]);
+///
+/// // The follwing is equavalent, but potentially slower:
+/// let mut vec1 = Vec::with_capacity(5);
+/// vec1.resize(5, 0);
+/// ```
+///
+/// Use a `Vec<T>` as an efficient stack:
+///
+/// ```
+/// # use ve::Vec;
+/// let mut stack = Vec::new();
+///
+/// stack.push(1);
+/// stack.push(2);
+/// stack.push(3);
+///
+/// while let Some(top) = stack.pop() {
+///     // Prints 3, 2, 1
+///     println!("{}", top);
+/// }
+/// ```
+///
+/// # Indexing
+///
+/// The `Vec` type allows to access values by index, because it implements [`Index`] trait.
+/// An example will be more explicit:
+///
+/// ```
+/// # use ve::vec;
+/// let v = vec![0, 2, 4, 6];
+/// println!("{}", v[1]); // it will display '2'
+/// ```
+///
+/// However be careful: if you try to access an index which isn't in the `Vec`,
+/// your software will panic! You cannot do this:
+///
+/// ```should_panic
+/// # use ve::vec;
+/// let v = vec![0, 2, 4, 6];
+/// println!("{}", v[6]); // it will panic!
+/// ```
+///
+/// Use [`get`] and [`get_mut`] if you want to check whether the index is in the `Vec`.
+///
+/// # Slicing
+///
+/// A `Vec` can be mutable. Slices, on the other hand, are read-only objects.
+/// To get a slice, use `&`. Example:
+///
+/// ```
+/// # use ve::vec;
+/// fn read_slice(slice: &[usize]) {
+///     // ...
+/// }
+///
+/// let v = vec![0, 1];
+/// read_slice(&v);
+///
+/// // ... and that's all!
+/// // you can also do it like this:
+/// let u: &[usize] = &v;
+/// ```
+///
+/// In Rust, it's more common to pass slices as arguments rather than vectors when you just want to
+/// provide read access. The same goes for [`String`] and [`&str`].
+///
+/// # Capacity and reallocation
+///
+/// The capacity of a vector is the amount of space allocated for any future elements that will be
+/// added onto the vector. This is not to be confused with the *length* of a vector, which
+/// specifies the number of actual elements within the vector. If a vector's length exceeds its
+/// capacity, its capacity will automatically be increased but its elements will have to be
+/// reallocated.
+///
+/// For example, a vector with capacity 10 and length 0 would be an empty vector with space for 10
+/// more elements. Pushing 10 or fewer elements onto the vector will not change its capacity or
+/// cause reallocation to occur. However, if the vector's length is increased to 11, it will have
+/// to reallocate, which can be slow. For this reason, it is recommended to use
+/// [`Vec::with_capacity`] whenever possible to specify how big the vector is expected to get.
+///
+/// # Guarantees
+///
+/// TODO Guarantees
 pub struct Vec<T> {
     buf: RawVec<T>,
 }
@@ -294,7 +413,7 @@ impl<T> Vec<T> {
     ///
     /// Note that this will drop any excess capacity.
     ///
-    /// [owned slice]: https://doc.rust-lang.org/stable/std/boxed/struct.Box.html
+    /// [owned slice]: Box
     ///
     /// # Examples
     ///
@@ -339,8 +458,6 @@ impl<T> Vec<T> {
     ///
     /// Truncating a five element vector to two elements:
     ///
-    /// Truncating a five element vector to two elements.
-    ///
     /// ```
     /// # use ve::vec;
     /// let mut vec = vec![1, 2, 3, 4, 5];
@@ -366,8 +483,8 @@ impl<T> Vec<T> {
     /// assert_eq!(vec, []);
     /// ```
     ///
-    /// [`clear`]: #method.clear
-    /// [`drain`]: #method.drain
+    /// [`clear`]: Vec::clear
+    /// [`drain`]: Vec::drain
     pub fn truncate(&mut self, len: usize) {
         // This is safe because:
         //
@@ -445,7 +562,7 @@ impl<T> Vec<T> {
     /// }
     /// ```
     ///
-    /// [`as_mut_ptr`]: #method.as_mut_ptr
+    /// [`as_mut_ptr`]: Vec::as_mut_ptr
     #[inline]
     pub fn as_ptr(&self) -> *const T {
         // We shadow the slice method of thesame name to avoid going through `deref`, which creates
@@ -498,17 +615,17 @@ impl<T> Vec<T> {
     /// Normally changing the length of a vector is done using one of the safe operations instead,
     /// such as [`truncate`], [`resize`], [`extend`], or [`clear`].
     ///
-    /// [`truncate`]: #method.truncate
-    /// [`resize`]: #method.resize
-    /// [`extend`]: https://doc.rust-lang.org/stable/std/iter/trait.Extend.html#tymethod.extend
-    /// [`clear`]: #method.clear
+    /// [`truncate`]: Vec::truncate
+    /// [`resize`]: Vec::resize
+    /// [`extend`]: Extend::extend
+    /// [`clear`]: Vec::clear
     ///
     /// # Safety
     ///
     /// - `new_len` must be less than or equal to [`capacity()`].
     /// - The elements at `old_len..new_len` must be initialized.
     ///
-    /// [`capacity()`]: #method.capacity
+    /// [`capacity()`]: Vec::capacity
     ///
     /// # Examples
     ///
@@ -738,8 +855,6 @@ impl<T> Vec<T> {
 
     /// Removes the last element from a vector and returns it, or [`None`] if it is empty.
     ///
-    /// [`None`]: https://doc.rust-lang.org/stable/std/option/enum.Option.html#variant.None
-    ///
     /// # Examples
     ///
     /// ```
@@ -925,9 +1040,81 @@ impl<T> Vec<T> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    // TODO split_off
+
+    /// Resizes the `Vec` in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the `Vec` is extended by the difference, with each
+    /// additional slot filled with the result of calling the closure `f`. The return values from
+    /// `f` will end up in the `Vec` in the order they have been generated.
+    ///
+    /// If `new_len` is less than `len`, the `Vec` is simply truncated.
+    ///
+    /// This method uses a closure to create new values on every push. If you'd rather [`Clone`] a
+    /// given value, use [`Vec::resize`]. If you want to use the [`Default`] trait to generate
+    /// values, you can pass [`Default::default`] as the second argument.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let mut vec = vec![1, 2, 3];
+    /// vec.resize_with(5, Default::default);
+    /// assert_eq!(vec, [1, 2, 3, 0, 0]);
+    ///
+    /// let mut vec = vec![];
+    /// let mut p = 1;
+    /// vec.resize_with(4, || { p *= 2; p });
+    /// assert_eq!(vec, [2, 4, 8, 16]);
+    /// ```
+    pub fn resize_with<F>(&mut self, new_len: usize, f: F)
+    where
+        F: FnMut() -> T,
+    {
+        let len = self.len();
+        if new_len > len {
+            self.extend_with(new_len - len, ExtendFunc(f));
+        } else {
+            self.truncate(new_len);
+        }
+    }
 }
 
 impl<T: Clone> Vec<T> {
+    /// Resizes the `Vec` in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the `Vec` is extended by the difference, with each
+    /// additional slot filled with `value`. If `new_len` is less than `len`, the `Vec` is simply
+    /// truncated.
+    ///
+    /// This method requires `T` to implement [`Clone`], in order to be able to clone the passed
+    /// value.
+    /// If you need more flexibility (or want to rely on [`Default`] instead of [`Clone`]), use
+    /// [`resize_with`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ve::vec;
+    /// let mut vec = vec!["hello"];
+    /// vec.resize(3, "world");
+    /// assert_eq!(vec, ["hello", "world", "world"]);
+    ///
+    /// let mut vec = vec![1, 2, 3, 4];
+    /// vec.resize(2, 0);
+    /// assert_eq!(vec, [1, 2]);
+    /// ```
+    pub fn resize(&mut self, new_len: usize, value: T) {
+        let len = self.len();
+
+        if new_len > len {
+            self.extend_with(new_len - len, ExtendElement(value))
+        } else {
+            self.truncate(new_len);
+        }
+    }
+
     /// Clones and appends all the elements in a slice to the `Vec`.
     ///
     /// Iterates over the slice `other`, clones each element, and then appends it to this `Vec`.
@@ -946,7 +1133,7 @@ impl<T: Clone> Vec<T> {
     /// assert_eq!(vec, [1, 2, 3, 4]);
     /// ```
     ///
-    /// [`extend`]: #method.extend
+    /// [`extend`]: Extend::extend
     pub fn extend_from_slice(&mut self, other: &[T]) {
         self.spec_extend(other.iter())
     }
