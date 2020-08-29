@@ -252,7 +252,7 @@ impl<T, A: AllocRef> RawVec<T, A> {
             // We have allocated chunk of memory, so we can bypass runtime checks to get our
             // current layout.
             unsafe {
-                let align = mem::size_of::<T>();
+                let align = mem::align_of::<T>();
                 let size = mem::size_of::<T>() * self.capacity();
                 let layout = Layout::from_size_align_unchecked(size, align);
                 Some((self.ptr.cast(), layout))
