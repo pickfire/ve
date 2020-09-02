@@ -1,6 +1,11 @@
 ve
 ===
 
+
+[![Build Status](https://github.com/pickfire/ve/workflows/Continuous%20Integration/badge.svg?branch=master)](https://github.com/pickfire/ve/actions)
+[![Documentation](https://docs.rs/ve/badge.svg)](https://docs.rs/ve)
+[![Crates.io](https://img.shields.io/crates/v/ve.svg)](https://crates.io/crates/ve)
+
 More compact version of `Vec`, uses 2 bytes/characters instead of 3. Currently
 targeting only 64-bits machine and aim to be drop in replacement for `Vec`.
 
