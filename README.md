@@ -6,8 +6,8 @@ ve
 [![Documentation](https://docs.rs/ve/badge.svg)](https://docs.rs/ve)
 [![Crates.io](https://img.shields.io/crates/v/ve.svg)](https://crates.io/crates/ve)
 
-More compact version of `Vec`, uses 2 bytes/characters instead of 3. Currently
-targeting only 64-bits machine and aim to be drop in replacement for `Vec`.
+More compact version of `Vec`, uses 2 words instead of 3. Currently targetting
+only 64-bits machine and aim to be drop in replacement for `Vec`.
 
 This crate is work in progress, requires nightly and is highly experimental.
 Porting is done by hand based on rust liballoc, `String` may be next target.
